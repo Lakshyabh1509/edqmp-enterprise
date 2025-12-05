@@ -1,0 +1,86 @@
+rules:
+  # Trade Data Completeness
+  - name: trade_completeness
+    type: completeness
+    description: Ensure all required trade fields are populated
+    config:
+      columns:
+        - trade_id
+        - symbol
+        - quantity
+        - price
+        - execution_time
+      threshold: 0.99
+      treat_empty_as_null: true
+    severity: critical
+    tags: [trading, compliance]
+
+  # Account Number Format
+  - name: account_format_validation
+    type: accuracy
+    description: Validate account numbers match expected format
+    config:
+      column: account_number
+      pattern: "^[A-Z]{2}[0-9]{10}$"
+      threshold: 1.0
+    severity: critical
+    tags: [kyc, compliance]
+
+  # Price Anomaly Detection
+  - name: price_anomaly_detection
+    type: anomaly
+    description: Detect unusual price movements using z-score
+    config:
+      column: price
+      method: zscore
+      z_threshold: 3.0
+      direction: both
+    severity: warning
+    tags: [trading, risk]
+
+  # Customer Uniqueness
+  - name: customer_uniqueness
+    type: uniqueness
+    description: Ensure no duplicate customer records
+    config:
+      columns:
+        - customer_id
+        - document_number
+      threshold: 1.0
+    severity: critical
+    tags: [kyc, compliance]
+
+  # Data Freshness
+  - name: data_freshness_check
+    type: timeliness
+    description: Validate data is updated within SLA window
+    config:
+      timestamp_column: updated_at
+      max_age_hours: 24
+      timezone: UTC
+      check_future: true
+    severity: warning
+    tags: [sla, monitoring]
+
+  # Trade Consistency
+  - name: trade_consistency
+    type: consistency
+    description: Validate trade data consistency rules
+    config:
+      rules:
+        - name: positive_quantity
+          type: expression
+          config:
+            expression: "quantity > 0"
+        - name: positive_price
+          type: expression
+          config:
+            expression: "price > 0"
+        - name: valid_symbol
+          type: lookup
+          config:
+            column: symbol
+            values: [AAPL, GOOGL, MSFT, AMZN, META, TSLA, NVDA]
+      threshold: 0.99
+    severity: critical
+    tags: [trading, validation]
