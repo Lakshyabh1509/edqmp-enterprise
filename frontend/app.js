@@ -1,6 +1,7 @@
 /**
  * EDQMP Frontend Application
  * Enterprise Data Quality & Monitoring Platform
+ * With Real Supabase Authentication
  */
 
 // =============================================================================
@@ -14,6 +15,25 @@ const CONFIG = {
 };
 
 // =============================================================================
+// Supabase Client Initialization
+// =============================================================================
+
+let supabase = null;
+
+async function initSupabase() {
+    try {
+        // Dynamic import of Supabase JS client
+        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+        supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+        console.log('Supabase initialized successfully');
+        return true;
+    } catch (error) {
+        console.error('Failed to initialize Supabase:', error);
+        return false;
+    }
+}
+
+// =============================================================================
 // State Management
 // =============================================================================
 
@@ -23,7 +43,9 @@ const state = {
     user: null,
     currentPage: 'dashboard',
     uploadedFile: null,
-    chart: null
+    chart: null,
+    pendingVerification: false,
+    pendingEmail: null
 };
 
 // =============================================================================
@@ -80,19 +102,57 @@ const $$ = (selector) => document.querySelectorAll(selector);
 // Initialization
 // =============================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    showLoading(true);
+
+    // Initialize Supabase
+    await initSupabase();
+
     initTabs();
     initNavigation();
     initForms();
     initFileUpload();
-    checkAuth();
+
+    // Check for auth state
+    await checkAuth();
+
+    showLoading(false);
 });
+
+function showLoading(show) {
+    // Could add a loading spinner here
+}
 
 // =============================================================================
 // Authentication
 // =============================================================================
 
-function checkAuth() {
+async function checkAuth() {
+    // First check if there's a Supabase session
+    if (supabase) {
+        try {
+            const { data: { session }, error } = await supabase.auth.getSession();
+
+            if (session && session.user) {
+                state.user = {
+                    id: session.user.id,
+                    email: session.user.email,
+                    name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+                    role: 'user',
+                    isDemo: false,
+                    emailVerified: session.user.email_confirmed_at !== null
+                };
+                state.isAuthenticated = true;
+                state.isDemo = false;
+                showApp();
+                return;
+            }
+        } catch (error) {
+            console.error('Session check error:', error);
+        }
+    }
+
+    // Fall back to local storage
     const savedUser = localStorage.getItem('edqmp_user');
     if (savedUser) {
         state.user = JSON.parse(savedUser);
@@ -102,11 +162,96 @@ function checkAuth() {
     } else {
         showLogin();
     }
+
+    // Listen for auth state changes
+    if (supabase) {
+        supabase.auth.onAuthStateChange((event, session) => {
+            console.log('Auth state changed:', event);
+            if (event === 'SIGNED_IN' && session) {
+                state.user = {
+                    id: session.user.id,
+                    email: session.user.email,
+                    name: session.user.user_metadata?.full_name || session.user.email.split('@')[0],
+                    role: 'user',
+                    isDemo: false,
+                    emailVerified: session.user.email_confirmed_at !== null
+                };
+                state.isAuthenticated = true;
+                state.isDemo = false;
+                showApp();
+            } else if (event === 'SIGNED_OUT') {
+                state.user = null;
+                state.isAuthenticated = false;
+                showLogin();
+            }
+        });
+    }
 }
 
 function showLogin() {
     $('#loginModal').classList.remove('hidden');
     $('#app').classList.add('hidden');
+    hideVerificationScreen();
+}
+
+function showVerificationScreen(email) {
+    state.pendingVerification = true;
+    state.pendingEmail = email;
+
+    $('#loginTab').innerHTML = `
+        <div class="verification-box">
+            <div style="font-size: 3rem; margin-bottom: 1rem;">📧</div>
+            <h2 style="margin-bottom: 0.5rem;">Verify Your Email</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                We've sent a verification link to<br>
+                <strong style="color: var(--accent-primary);">${email}</strong>
+            </p>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
+                Click the link in your email to activate your account.
+                <br>Check your spam folder if you don't see it.
+            </p>
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+            <button class="btn btn-secondary" style="flex: 1;" onclick="resendVerification()">📤 Resend Email</button>
+            <button class="btn btn-secondary" style="flex: 1;" onclick="backToLogin()">← Back</button>
+        </div>
+        <div style="margin-top: 1rem;">
+            <button class="btn btn-primary btn-full" onclick="tryLoginAfterVerification()">🔐 I've Verified - Log In</button>
+        </div>
+    `;
+}
+
+function hideVerificationScreen() {
+    state.pendingVerification = false;
+    state.pendingEmail = null;
+}
+
+function backToLogin() {
+    location.reload();
+}
+
+async function resendVerification() {
+    if (!supabase || !state.pendingEmail) {
+        showToast('Cannot resend verification email', 'error');
+        return;
+    }
+
+    try {
+        const { error } = await supabase.auth.resend({
+            type: 'signup',
+            email: state.pendingEmail
+        });
+
+        if (error) throw error;
+        showToast('Verification email sent! Check your inbox.', 'success');
+    } catch (error) {
+        showToast('Failed to resend: ' + error.message, 'error');
+    }
+}
+
+async function tryLoginAfterVerification() {
+    showToast('Please enter your password to log in', 'info');
+    location.reload();
 }
 
 function showApp() {
@@ -126,38 +271,146 @@ function showApp() {
     navigateTo('dashboard');
 }
 
-function login(email, password) {
-    // For demo purposes, accept any login
-    // In production, this would call Supabase auth
-    state.user = {
-        email: email,
-        name: email.split('@')[0],
-        role: 'user',
-        isDemo: false
-    };
-    state.isAuthenticated = true;
-    state.isDemo = false;
+async function login(email, password) {
+    if (!email || !password) {
+        showToast('Please enter email and password', 'error');
+        return;
+    }
 
-    localStorage.setItem('edqmp_user', JSON.stringify(state.user));
-    showToast('Login successful!', 'success');
-    showApp();
+    // Try Supabase auth first
+    if (supabase) {
+        try {
+            showToast('Signing in...', 'info');
+
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                if (error.message.includes('Email not confirmed')) {
+                    showToast('Please verify your email first. Check your inbox.', 'warning');
+                    showVerificationScreen(email);
+                    return;
+                }
+                throw error;
+            }
+
+            if (data.user) {
+                state.user = {
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: data.user.user_metadata?.full_name || data.user.email.split('@')[0],
+                    role: 'user',
+                    isDemo: false,
+                    emailVerified: data.user.email_confirmed_at !== null
+                };
+                state.isAuthenticated = true;
+                state.isDemo = false;
+
+                localStorage.setItem('edqmp_user', JSON.stringify(state.user));
+                showToast('Login successful!', 'success');
+                showApp();
+                return;
+            }
+        } catch (error) {
+            console.error('Supabase login error:', error);
+            showToast(error.message || 'Login failed. Please check your credentials.', 'error');
+            return;
+        }
+    } else {
+        // Fallback: Local auth for demo
+        state.user = {
+            email: email,
+            name: email.split('@')[0],
+            role: 'user',
+            isDemo: false
+        };
+        state.isAuthenticated = true;
+        state.isDemo = false;
+
+        localStorage.setItem('edqmp_user', JSON.stringify(state.user));
+        showToast('Login successful! (Demo mode)', 'success');
+        showApp();
+    }
 }
 
-function signup(email, name, password) {
-    // For demo purposes, create user locally
-    // In production, this would call Supabase auth
-    state.user = {
-        email: email,
-        name: name,
-        role: 'user',
-        isDemo: false
-    };
-    state.isAuthenticated = true;
-    state.isDemo = false;
+async function signup(email, name, password) {
+    if (!email || !name || !password) {
+        showToast('Please fill in all fields', 'error');
+        return;
+    }
 
-    localStorage.setItem('edqmp_user', JSON.stringify(state.user));
-    showToast('Account created successfully!', 'success');
-    showApp();
+    if (password.length < 6) {
+        showToast('Password must be at least 6 characters', 'error');
+        return;
+    }
+
+    // Try Supabase signup
+    if (supabase) {
+        try {
+            showToast('Creating account...', 'info');
+
+            const { data, error } = await supabase.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: {
+                        full_name: name
+                    }
+                }
+            });
+
+            if (error) throw error;
+
+            if (data.user) {
+                // Check if email verification is required
+                if (data.user.email_confirmed_at === null) {
+                    showToast('Account created! Please check your email to verify.', 'success');
+                    showVerificationScreen(email);
+                    return;
+                } else {
+                    // Email already confirmed (auto-confirm enabled)
+                    state.user = {
+                        id: data.user.id,
+                        email: data.user.email,
+                        name: name,
+                        role: 'user',
+                        isDemo: false
+                    };
+                    state.isAuthenticated = true;
+                    state.isDemo = false;
+
+                    localStorage.setItem('edqmp_user', JSON.stringify(state.user));
+                    showToast('Account created successfully!', 'success');
+                    showApp();
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('Supabase signup error:', error);
+            if (error.message.includes('already registered')) {
+                showToast('An account with this email already exists. Please login.', 'error');
+            } else {
+                showToast(error.message || 'Signup failed. Please try again.', 'error');
+            }
+            return;
+        }
+    } else {
+        // Fallback: Local signup for demo
+        state.user = {
+            email: email,
+            name: name,
+            role: 'user',
+            isDemo: false
+        };
+        state.isAuthenticated = true;
+        state.isDemo = false;
+
+        localStorage.setItem('edqmp_user', JSON.stringify(state.user));
+        showToast('Account created! (Demo mode - no email verification)', 'success');
+        showApp();
+    }
 }
 
 function loginDemo() {
@@ -175,7 +428,16 @@ function loginDemo() {
     showApp();
 }
 
-function logout() {
+async function logout() {
+    // Sign out from Supabase
+    if (supabase) {
+        try {
+            await supabase.auth.signOut();
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    }
+
     state.user = null;
     state.isAuthenticated = false;
     state.isDemo = false;
@@ -277,41 +539,27 @@ function initTabs() {
 // =============================================================================
 
 function initForms() {
-    $('#loginForm').addEventListener('submit', (e) => {
+    $('#loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email = $('#loginEmail').value;
+        const email = $('#loginEmail').value.trim();
         const password = $('#loginPassword').value;
 
-        if (email && password) {
-            login(email, password);
-        } else {
-            showToast('Please enter email and password', 'error');
-        }
+        await login(email, password);
     });
 
-    $('#signupForm').addEventListener('submit', (e) => {
+    $('#signupForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const email = $('#signupEmail').value;
-        const name = $('#signupName').value;
+        const email = $('#signupEmail').value.trim();
+        const name = $('#signupName').value.trim();
         const password = $('#signupPassword').value;
         const confirm = $('#signupConfirm').value;
-
-        if (!email || !name || !password) {
-            showToast('Please fill in all fields', 'error');
-            return;
-        }
-
-        if (password.length < 6) {
-            showToast('Password must be at least 6 characters', 'error');
-            return;
-        }
 
         if (password !== confirm) {
             showToast('Passwords do not match', 'error');
             return;
         }
 
-        signup(email, name, password);
+        await signup(email, name, password);
     });
 
     $('#demoBtn').addEventListener('click', loginDemo);
@@ -439,13 +687,6 @@ function loadDemoData() {
 function loadEmptyState() {
     // Show empty state on dashboard
     $('#emptyState').classList.remove('hidden');
-
-    // Hide demo data sections
-    $$('.metrics-grid').forEach(m => {
-        if (m.closest('#dashboardPage')) {
-            // Show metrics but with zero values
-        }
-    });
 
     // Reset metrics to zero
     $('#riskExposure').textContent = '$0';
@@ -655,3 +896,6 @@ function showToast(message, type = 'info') {
 window.navigateTo = navigateTo;
 window.acknowledgeAlert = acknowledgeAlert;
 window.resolveAlert = resolveAlert;
+window.resendVerification = resendVerification;
+window.backToLogin = backToLogin;
+window.tryLoginAfterVerification = tryLoginAfterVerification;
