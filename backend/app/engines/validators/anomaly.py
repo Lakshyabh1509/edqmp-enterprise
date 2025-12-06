@@ -9,7 +9,14 @@ import logging
 
 import pandas as pd
 import numpy as np
-from scipy import stats
+
+# scipy is optional - only used for some statistical methods
+try:
+    from scipy import stats
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    stats = None
 
 from app.engines.validators.base import (
     BaseValidator, 
