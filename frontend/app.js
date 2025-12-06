@@ -9,7 +9,7 @@
 // =============================================================================
 
 const CONFIG = {
-    API_URL: 'https://edqmp-enterprise.vercel.app/api/v1',
+    API_URL: window.location.hostname === 'localhost' ? 'http://localhost:8000/api/v1' : '/api/v1',
     SUPABASE_URL: 'https://rlvblrpfsfbnetdgnaqh.supabase.co',
     SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsdmJscnBmc2ZibmV0ZGduYXFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5Njc5MjYsImV4cCI6MjA4MDU0MzkyNn0.d4D5pTVgu9Jg36T2kXb3ZnC8OgcoPtzR_uqhme3qDHo'
 };
@@ -49,7 +49,8 @@ const state = {
     uploadedFile: null,
     chart: null,
     pendingVerification: false,
-    pendingEmail: null
+    pendingEmail: null,
+    api: null
 };
 
 // =============================================================================
@@ -111,6 +112,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Supabase
     await initSupabase();
+
+    // Initialize API Client
+    if (typeof ApiClient !== 'undefined') {
+        state.api = new ApiClient(CONFIG.API_URL);
+    } else {
+        console.error('ApiClient not loaded');
+    }
 
     initTabs();
     initNavigation();
@@ -633,51 +641,136 @@ function formatFileSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-function runValidation() {
+async function runValidation() {
     if (!state.uploadedFile) {
         showToast('Please upload a file first', 'error');
         return;
     }
 
-    $('#runValidation').disabled = true;
-    $('#runValidation').textContent = 'Running...';
+    const btn = $('#runValidation');
+    btn.disabled = true;
+    btn.textContent = 'Running...';
 
-    // Simulate validation
-    setTimeout(() => {
-        showValidationResults();
-        $('#runValidation').disabled = false;
-        $('#runValidation').textContent = '🚀 Execute Validation Engine';
-    }, 1500);
+    if (state.isDemo) {
+        // Simulate validation
+        setTimeout(() => {
+            showValidationResults(null); // Null triggers demo data
+            btn.disabled = false;
+            btn.textContent = '🚀 Execute Validation Engine';
+        }, 1500);
+        return;
+    }
+
+    try {
+        let data = [];
+        const text = await state.uploadedFile.text();
+
+        if (state.uploadedFile.name.endsWith('.json')) {
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                throw new Error('Invalid JSON file');
+            }
+        } else if (state.uploadedFile.name.endsWith('.csv')) {
+            // Simple CSV parser
+            const lines = text.split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            data = lines.slice(1).filter(l => l.trim()).map(line => {
+                const values = line.split(',');
+                return headers.reduce((obj, header, i) => {
+                    obj[header] = values[i]?.trim();
+                    return obj;
+                }, {});
+            });
+        }
+
+        const result = await state.api.runValidation(data);
+        showValidationResults(result);
+        showToast('Validation complete!', 'success');
+
+    } catch (error) {
+        console.error('Validation error:', error);
+        showToast(error.message || 'Validation failed', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 Execute Validation Engine';
+    }
 }
 
-function showValidationResults() {
+function showValidationResults(result) {
+    if (state.isDemo || !result) {
+        // Demo/Mock Results
+        const resultsHtml = `
+            <div class="card">
+                <h3>🔍 Validation Results (Demo)</h3>
+                <div class="results-metrics">
+                    <div class="result-metric">
+                        <div class="value" style="color: var(--success)">94.2%</div>
+                        <div class="label">Quality Score</div>
+                    </div>
+                    <div class="result-metric">
+                        <div class="value">1,245</div>
+                        <div class="label">Rows Processed</div>
+                    </div>
+                    <div class="result-metric">
+                        <div class="value" style="color: var(--danger)">72</div>
+                        <div class="label">Failed Records</div>
+                    </div>
+                </div>
+                <div class="threat-item warning" style="margin-top: 1rem;">
+                    <div class="threat-title">⚠️ 72 records failed validation</div>
+                    <div class="threat-meta">Estimated Operational Risk: $32,400</div>
+                </div>
+            </div>
+        `;
+        $('#validationResults').innerHTML = resultsHtml;
+        $('#validationResults').classList.remove('hidden');
+        if (state.isDemo) showToast('Validation complete!', 'success');
+        return;
+    }
+
+    // Real Results
+    const scoreColor = result.overall_score >= 0.9 ? 'var(--success)' : (result.overall_score >= 0.7 ? 'var(--warning)' : 'var(--danger)');
+
     const resultsHtml = `
         <div class="card">
             <h3>🔍 Validation Results</h3>
             <div class="results-metrics">
                 <div class="result-metric">
-                    <div class="value" style="color: var(--success)">94.2%</div>
+                    <div class="value" style="color: ${scoreColor}">${(result.overall_score * 100).toFixed(1)}%</div>
                     <div class="label">Quality Score</div>
                 </div>
                 <div class="result-metric">
-                    <div class="value">1,245</div>
-                    <div class="label">Rows Processed</div>
+                    <div class="value">${result.total_rules}</div>
+                    <div class="label">Rules executed</div>
                 </div>
                 <div class="result-metric">
-                    <div class="value" style="color: var(--danger)">72</div>
-                    <div class="label">Failed Records</div>
+                    <div class="value" style="color: var(--danger)">${result.failed_rules}</div>
+                    <div class="label">Rules Failed</div>
                 </div>
             </div>
-            <div class="threat-item warning" style="margin-top: 1rem;">
-                <div class="threat-title">⚠️ 72 records failed validation</div>
-                <div class="threat-meta">Estimated Operational Risk: $32,400</div>
+            
+            <div class="rules-breakdown" style="margin-top: 1.5rem;">
+                <h4>Rule Breakdown</h4>
+                <div class="threats-list">
+                    ${result.results.map(r => `
+                        <div class="threat-item ${r.status === 'passed' ? 'success' : 'danger'}" style="padding: 0.75rem;">
+                            <div class="threat-title" style="display:flex; justify-content:space-between;">
+                                <span>${r.rule_name}</span>
+                                <span>${(r.score * 100).toFixed(0)}%</span>
+                            </div>
+                            <div class="threat-meta">
+                                Passed: ${r.records_passed} | Failed: ${r.records_failed}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
             </div>
         </div>
     `;
 
     $('#validationResults').innerHTML = resultsHtml;
     $('#validationResults').classList.remove('hidden');
-    showToast('Validation complete!', 'success');
 }
 
 // =============================================================================
@@ -786,86 +879,161 @@ function loadRiskChart() {
     });
 }
 
-function loadQualityData() {
-    if (!state.isDemo) return;
+async function loadQualityData() {
+    if (state.isDemo) {
+        // Load rules
+        const rulesHtml = DEMO_DATA.rules.map(r => `
+            <tr>
+                <td>${r.name}</td>
+                <td>${r.type}</td>
+                <td>${r.target}</td>
+                <td><span class="status-badge ${r.severity.toLowerCase()}">${r.severity}</span></td>
+                <td><span class="status-badge healthy">${r.status}</span></td>
+            </tr>
+        `).join('');
+        $('#rulesTableBody').innerHTML = rulesHtml;
 
-    // Load rules
-    const rulesHtml = DEMO_DATA.rules.map(r => `
-        <tr>
-            <td>${r.name}</td>
-            <td>${r.type}</td>
-            <td>${r.target}</td>
-            <td><span class="status-badge ${r.severity.toLowerCase()}">${r.severity}</span></td>
-            <td><span class="status-badge healthy">${r.status}</span></td>
-        </tr>
-    `).join('');
-    $('#rulesTableBody').innerHTML = rulesHtml;
-
-    // Load sources
-    const sourcesHtml = DEMO_DATA.sources.map(s => `
-        <tr>
-            <td>${s.name}</td>
-            <td>${s.type}</td>
-            <td><span class="status-badge ${s.status === 'Connected' ? 'healthy' : 'warning'}">${s.status}</span></td>
-        </tr>
-    `).join('');
-    $('#sourcesTableBody').innerHTML = sourcesHtml;
-}
-
-function loadPipelinesData() {
-    if (!state.isDemo) {
-        $('#activePipelines').textContent = '0';
-        $('#successRate').textContent = '—';
-        $('#avgLatency').textContent = '—';
-        $('#pipelineSla').textContent = '—';
+        // Load sources
+        const sourcesHtml = DEMO_DATA.sources.map(s => `
+            <tr>
+                <td>${s.name}</td>
+                <td>${s.type}</td>
+                <td><span class="status-badge ${s.status === 'Connected' ? 'healthy' : 'warning'}">${s.status}</span></td>
+            </tr>
+        `).join('');
+        $('#sourcesTableBody').innerHTML = sourcesHtml;
         return;
     }
 
-    $('#activePipelines').textContent = '24';
-    $('#successRate').textContent = '99.2%';
-    $('#avgLatency').textContent = '2.3s';
-    $('#pipelineSla').textContent = '99.9%';
+    try {
+        const rules = await state.api.getQualityRules();
+        if (rules && rules.items) {
+            $('#rulesTableBody').innerHTML = rules.items.map(r => `
+                <tr>
+                    <td>${r.name}</td>
+                    <td>${r.rule_type}</td>
+                    <td>${r.config?.target_column || '-'}</td>
+                    <td><span class="status-badge ${r.severity.toLowerCase()}">${r.severity}</span></td>
+                    <td><span class="status-badge ${r.is_active ? 'healthy' : 'warning'}">${r.is_active ? 'Active' : 'Inactive'}</span></td>
+                </tr>
+            `).join('');
+        }
 
-    const pipelinesHtml = DEMO_DATA.pipelines.map(p => `
-        <tr>
-            <td>${p.name}</td>
-            <td><span class="status-badge ${p.status}">${p.status === 'healthy' ? '🟢 Healthy' : '🟡 Warning'}</span></td>
-            <td>${p.lastRun}</td>
-            <td>${p.latency}</td>
-            <td>${p.successRate}</td>
-        </tr>
-    `).join('');
-    $('#pipelinesTableBody').innerHTML = pipelinesHtml;
+        const sources = await state.api.getDataSources();
+        if (sources) {
+            $('#sourcesTableBody').innerHTML = sources.map(s => `
+                <tr>
+                    <td>${s.name}</td>
+                    <td>${s.source_type}</td>
+                    <td><span class="status-badge ${s.is_active ? 'healthy' : 'warning'}">${s.is_active ? 'Active' : 'Inactive'}</span></td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('Failed to load quality data', 'error');
+    }
 }
 
-function loadAlertsData() {
-    if (!state.isDemo) {
-        $('#openAlerts').textContent = '0';
-        $('#criticalAlerts').textContent = '0';
-        $('#warningAlerts').textContent = '0';
-        $('#resolvedAlerts').textContent = '0';
-        $('#alertsList').innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No alerts configured yet</p>';
+async function loadPipelinesData() {
+    if (state.isDemo) {
+        $('#activePipelines').textContent = '24';
+        $('#successRate').textContent = '99.2%';
+        $('#avgLatency').textContent = '2.3s';
+        $('#pipelineSla').textContent = '99.9%';
+
+        const pipelinesHtml = DEMO_DATA.pipelines.map(p => `
+            <tr>
+                <td>${p.name}</td>
+                <td><span class="status-badge ${p.status}">${p.status === 'healthy' ? '🟢 Healthy' : '🟡 Warning'}</span></td>
+                <td>${p.lastRun}</td>
+                <td>${p.latency}</td>
+                <td>${p.successRate}</td>
+            </tr>
+        `).join('');
+        $('#pipelinesTableBody').innerHTML = pipelinesHtml;
         return;
     }
 
-    $('#openAlerts').textContent = '3';
-    $('#criticalAlerts').textContent = '1';
-    $('#warningAlerts').textContent = '2';
-    $('#resolvedAlerts').textContent = '8';
+    try {
+        const health = await state.api.getPipelineHealth();
+        if (health && health.length > 0) {
+            // Calculate aggregates
+            const total = health.reduce((acc, curr) => acc + curr.total_runs, 0);
+            const success = health.reduce((acc, curr) => acc + curr.success_count, 0);
+            const avgLat = health.reduce((acc, curr) => acc + curr.avg_latency_ms, 0) / health.length;
 
-    const alertsHtml = DEMO_DATA.alerts.map((a, i) => `
-        <div class="alert-item ${a.severity}">
-            <div class="alert-content">
-                <div class="alert-header">${a.severity === 'critical' ? '🔴' : '🟡'} ${a.source} - ${a.rule}</div>
-                <div class="alert-message">${a.message} • ${a.time}</div>
+            $('#activePipelines').textContent = health.length;
+            $('#successRate').textContent = total > 0 ? ((success / total) * 100).toFixed(1) + '%' : '0%';
+            $('#avgLatency').textContent = avgLat.toFixed(1) + 'ms';
+            $('#pipelineSla').textContent = '100%'; // Placeholder for now
+
+            $('#pipelinesTableBody').innerHTML = health.map(p => `
+                <tr>
+                    <td>${p.source_name}</td>
+                    <td><span class="status-badge ${p.health_status}">${p.health_status === 'healthy' ? '🟢 Healthy' : '🟡 Warning'}</span></td>
+                    <td>${p.last_run ? new Date(p.last_run).toLocaleString() : '-'}</td>
+                    <td>${p.avg_latency_ms.toFixed(0)} ms</td>
+                    <td>${(p.success_rate * 100).toFixed(1)}%</td>
+                </tr>
+            `).join('');
+        } else {
+            $('#pipelinesTableBody').innerHTML = '<tr><td colspan="5" style="text-align:center">No pipelines found</td></tr>';
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('Failed to load pipeline data', 'error');
+    }
+}
+
+async function loadAlertsData() {
+    if (state.isDemo) {
+        $('#openAlerts').textContent = '3';
+        $('#criticalAlerts').textContent = '1';
+        $('#warningAlerts').textContent = '2';
+        $('#resolvedAlerts').textContent = '8';
+
+        const alertsHtml = DEMO_DATA.alerts.map((a, i) => `
+            <div class="alert-item ${a.severity}">
+                <div class="alert-content">
+                    <div class="alert-header">${a.severity === 'critical' ? '🔴' : '🟡'} ${a.source} - ${a.rule}</div>
+                    <div class="alert-message">${a.message} • ${a.time}</div>
+                </div>
+                <div class="alert-actions">
+                    <button class="btn btn-secondary" onclick="acknowledgeAlert(${i})">Acknowledge</button>
+                    <button class="btn btn-primary" onclick="resolveAlert(${i})">Resolve</button>
+                </div>
             </div>
-            <div class="alert-actions">
-                <button class="btn btn-secondary" onclick="acknowledgeAlert(${i})">Acknowledge</button>
-                <button class="btn btn-primary" onclick="resolveAlert(${i})">Resolve</button>
-            </div>
-        </div>
-    `).join('');
-    $('#alertsList').innerHTML = alertsHtml;
+        `).join('');
+        $('#alertsList').innerHTML = alertsHtml;
+        return;
+    }
+
+    try {
+        const stats = await state.api.getAlertStats();
+        if (stats) {
+            $('#openAlerts').textContent = stats.total_alerts - stats.resolved_count; // Approximation
+            $('#criticalAlerts').textContent = '-';
+            $('#warningAlerts').textContent = '-';
+            $('#resolvedAlerts').textContent = stats.acknowledged_count;
+        }
+
+        const alerts = await state.api.getAlerts(); // Returns history list
+        if (alerts && alerts.items) {
+            const alertsHtml = alerts.items.map(a => `
+                <div class="alert-item ${a.status === 'failed' ? 'critical' : 'warning'}">
+                    <div class="alert-content">
+                        <div class="alert-header">${a.status === 'failed' ? '🔴' : '🟡'} Alert - ${a.channel}</div>
+                        <div class="alert-message">${a.message} • ${new Date(a.sent_at).toLocaleString()}</div>
+                    </div>
+                </div>
+            `).join('');
+            $('#alertsList').innerHTML = alertsHtml || '<p style="text-align:center; padding: 1rem;">No alerts found</p>';
+        }
+    } catch (e) {
+        console.error(e);
+        showToast('Failed to load alerts', 'error');
+    }
 }
 
 function acknowledgeAlert(index) {
