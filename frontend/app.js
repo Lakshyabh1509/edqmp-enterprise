@@ -18,17 +18,21 @@ const CONFIG = {
 // Supabase Client Initialization
 // =============================================================================
 
-let supabase = null;
+let supabaseClient = null;
 
-async function initSupabase() {
+function initSupabase() {
     try {
-        // Dynamic import of Supabase JS client
-        const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-        supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
-        console.log('Supabase initialized successfully');
-        return true;
+        // Use global supabase from CDN
+        if (typeof supabase !== 'undefined' && supabase.createClient) {
+            supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+            console.log('✅ Supabase initialized successfully');
+            return true;
+        } else {
+            console.error('❌ Supabase SDK not loaded');
+            return false;
+        }
     } catch (error) {
-        console.error('Failed to initialize Supabase:', error);
+        console.error('❌ Failed to initialize Supabase:', error);
         return false;
     }
 }
@@ -129,9 +133,9 @@ function showLoading(show) {
 
 async function checkAuth() {
     // First check if there's a Supabase session
-    if (supabase) {
+    if (supabaseClient) {
         try {
-            const { data: { session }, error } = await supabase.auth.getSession();
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
 
             if (session && session.user) {
                 state.user = {
@@ -164,8 +168,8 @@ async function checkAuth() {
     }
 
     // Listen for auth state changes
-    if (supabase) {
-        supabase.auth.onAuthStateChange((event, session) => {
+    if (supabaseClient) {
+        supabaseClient.auth.onAuthStateChange((event, session) => {
             console.log('Auth state changed:', event);
             if (event === 'SIGNED_IN' && session) {
                 state.user = {
@@ -231,13 +235,13 @@ function backToLogin() {
 }
 
 async function resendVerification() {
-    if (!supabase || !state.pendingEmail) {
+    if (!supabaseClient || !state.pendingEmail) {
         showToast('Cannot resend verification email', 'error');
         return;
     }
 
     try {
-        const { error } = await supabase.auth.resend({
+        const { error } = await supabaseClient.auth.resend({
             type: 'signup',
             email: state.pendingEmail
         });
@@ -278,11 +282,11 @@ async function login(email, password) {
     }
 
     // Try Supabase auth first
-    if (supabase) {
+    if (supabaseClient) {
         try {
             showToast('Signing in...', 'info');
 
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
                 email: email,
                 password: password
             });
@@ -347,11 +351,11 @@ async function signup(email, name, password) {
     }
 
     // Try Supabase signup
-    if (supabase) {
+    if (supabaseClient) {
         try {
             showToast('Creating account...', 'info');
 
-            const { data, error } = await supabase.auth.signUp({
+            const { data, error } = await supabaseClient.auth.signUp({
                 email: email,
                 password: password,
                 options: {
@@ -430,9 +434,9 @@ function loginDemo() {
 
 async function logout() {
     // Sign out from Supabase
-    if (supabase) {
+    if (supabaseClient) {
         try {
-            await supabase.auth.signOut();
+            await supabaseClient.auth.signOut();
         } catch (error) {
             console.error('Logout error:', error);
         }
