@@ -1,61 +1,47 @@
 # EDQMP Deployment Guide
 
-Complete guide for deploying the Enterprise Data Quality & Monitoring Platform to production.
+Complete guide for deploying the Enterprise Data Quality & Monitoring Platform.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Architecture Overview](#architecture-overview)
-2. [Pre-Deployment Checklist](#pre-deployment-checklist)
-3. [Supabase Setup](#supabase-setup)
-4. [Backend Deployment (Render)](#backend-deployment-render)
-5. [Dashboard Deployment (Streamlit Cloud)](#dashboard-deployment-streamlit-cloud)
-6. [Alternative: Vercel Deployment](#alternative-vercel-deployment)
-7. [Environment Variables Reference](#environment-variables-reference)
-8. [Post-Deployment Verification](#post-deployment-verification)
+1. [Quick Start](#quick-start)
+2. [Supabase Setup](#supabase-setup)
+3. [Vercel Deployment](#vercel-deployment)
+4. [Netlify Deployment](#netlify-deployment)
+5. [Local Development](#local-development)
+6. [Environment Variables](#environment-variables)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
-## 🏗️ Architecture Overview
+## 🚀 Quick Start
+
+### Prerequisites
+
+- GitHub account with this repository
+- [Supabase](https://supabase.com) account (free tier)
+- [Vercel](https://vercel.com) or [Netlify](https://netlify.com) account (free tier)
+
+### Deployment Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         PRODUCTION SETUP                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│   ┌─────────────────┐      ┌─────────────────┐                     │
-│   │  Streamlit      │      │  FastAPI        │                     │
-│   │  Dashboard      │ ───► │  Backend        │                     │
-│   │  (Frontend)     │      │  (API)          │                     │
-│   └────────┬────────┘      └────────┬────────┘                     │
-│            │                        │                              │
-│            │    Streamlit Cloud     │    Render.com                │
-│            │    or Vercel           │    or Railway                │
-│            │                        │                              │
-│            └────────────┬───────────┘                              │
-│                         │                                          │
-│                         ▼                                          │
-│              ┌─────────────────────┐                               │
-│              │     Supabase        │                               │
-│              │   (PostgreSQL +     │                               │
-│              │    Auth + API)      │                               │
-│              └─────────────────────┘                               │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    VERCEL DEPLOYMENT                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   https://your-app.vercel.app/                             │
+│   ├── /              → Frontend (HTML/CSS/JS)              │
+│   ├── /api/v1/*      → Backend API (FastAPI)               │
+│   ├── /docs          → API Documentation                   │
+│   └── /health        → Health Check                        │
+│                                                             │
+│   Connected to:                                             │
+│   └── Supabase (PostgreSQL + Auth)                         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
-
----
-
-## ✅ Pre-Deployment Checklist
-
-Before deploying, ensure you have:
-
-- [ ] **Supabase Project** created at [supabase.com](https://supabase.com)
-- [ ] **Database Schema** executed via SQL Editor
-- [ ] **GitHub Repository** with your code pushed
-- [ ] **Render Account** at [render.com](https://render.com) (free tier available)
-- [ ] **Streamlit Cloud Account** at [streamlit.io/cloud](https://streamlit.io/cloud) (free tier available)
 
 ---
 
@@ -73,20 +59,20 @@ Before deploying, ensure you have:
 
 ### Step 2: Get API Keys
 
-Navigate to **Project Settings** → **API**:
+Navigate to **Project Settings** (gear icon) → **API**:
 
 | Field | Use For |
 |-------|---------|
-| Project URL | `SUPABASE_URL` |
-| anon/public key | `SUPABASE_KEY` |
-| service_role key | `SUPABASE_SERVICE_KEY` (keep secret!) |
+| **Project URL** | `SUPABASE_URL` |
+| **anon/public key** | `SUPABASE_KEY` |
+| **service_role key** | `SUPABASE_SERVICE_KEY` (keep secret!) |
 
 ### Step 3: Enable Email Authentication
 
 1. Go to **Authentication** → **Providers**
 2. Click **Email**
-3. Enable the toggle
-4. Set **Confirm Email** = OFF (for easier testing)
+3. Toggle **Enable Email Provider** = ON
+4. Toggle **Confirm Email** = OFF (for easier testing)
 5. Click **Save**
 
 ### Step 4: Run Database Schema
@@ -114,293 +100,284 @@ Expected tables:
 
 ---
 
-## 🚀 Backend Deployment (Render)
+## 🔷 Vercel Deployment
 
-### Step 1: Prepare Local Files
+### Step 1: Import Repository
 
-Ensure these files exist in `backend/`:
+1. Go to [vercel.com](https://vercel.com) and sign in
+2. Click **"Add New..."** → **"Project"**
+3. Select **"Import Git Repository"**
+4. Connect your GitHub account and select: `Lakshyabh1509/edqmp-enterprise`
+5. Click **"Import"**
 
-**`requirements.txt`** - Already exists ✅
+### Step 2: Configure Project
 
-**`Procfile`** (create if missing):
-```
-web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
+Leave these settings as default:
+- **Framework Preset**: Other
+- **Root Directory**: `.` (leave empty)
+- **Build Command**: (leave empty)
+- **Output Directory**: (leave empty)
 
-### Step 2: Deploy to Render
+### Step 3: Add Environment Variables
 
-1. Go to [render.com](https://render.com) and sign up
-2. Click **"New +"** → **"Web Service"**
-3. Connect your **GitHub repository**
-4. Configure:
+Click **"Environment Variables"** and add:
 
-| Setting | Value |
-|---------|-------|
-| **Name** | `edqmp-api` |
-| **Region** | Closest to users |
-| **Branch** | `main` |
-| **Root Directory** | `backend` |
-| **Runtime** | Python 3 |
-| **Build Command** | `pip install -r requirements.txt` |
-| **Start Command** | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
-
-5. Add **Environment Variables**:
-
-| Variable | Value |
-|----------|-------|
+| Key | Value |
+|-----|-------|
 | `SUPABASE_URL` | `https://rlvblrpfsfbnetdgnaqh.supabase.co` |
-| `SUPABASE_KEY` | Your anon key |
-| `SUPABASE_SERVICE_KEY` | Your service_role key |
-| `SECRET_KEY` | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `SUPABASE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsdmJscnBmc2ZibmV0ZGduYXFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5Njc5MjYsImV4cCI6MjA4MDU0MzkyNn0.d4D5pTVgu9Jg36T2kXb3ZnC8OgcoPtzR_uqhme3qDHo` |
+| `SECRET_KEY` | `Qx44eUKHB5rNhPzsexFNeQl1tR12c7yH5Y5v4EmvoaI` |
 | `ENVIRONMENT` | `production` |
 | `DEBUG` | `false` |
-| `PYTHON_VERSION` | `3.11.0` |
 
-6. Click **"Create Web Service"**
+### Step 4: Deploy
 
-### Step 3: Verify Backend
+Click **"Deploy"** and wait for the build to complete (~2-3 minutes).
 
-Once deployed, test:
-- Health check: `https://your-app.onrender.com/health`
-- API docs: `https://your-app.onrender.com/docs`
+### Step 5: Verify Deployment
+
+After deployment, test these endpoints:
+
+| Endpoint | Expected Result |
+|----------|-----------------|
+| `https://your-app.vercel.app/` | Frontend loads with login page |
+| `https://your-app.vercel.app/health` | `{"status": "healthy"}` |
+| `https://your-app.vercel.app/docs` | API documentation |
 
 ---
 
-## 📊 Dashboard Deployment (Streamlit Cloud)
+## 🌐 Netlify Deployment
 
-### Step 1: Prepare Configuration
+### Step 1: Import Repository
 
-Create `dashboard/.streamlit/secrets.toml`:
+1. Go to [netlify.com](https://netlify.com) and sign in
+2. Click **"Add new site"** → **"Import an existing project"**
+3. Connect GitHub and select: `Lakshyabh1509/edqmp-enterprise`
 
-```toml
-[general]
-API_URL = "https://your-render-app.onrender.com/api/v1"
-
-[supabase]
-url = "https://rlvblrpfsfbnetdgnaqh.supabase.co"
-key = "your-anon-key"
-```
-
-> ⚠️ **Don't commit this file!** Add to `.gitignore`
-
-### Step 2: Deploy to Streamlit Cloud
-
-1. Go to [share.streamlit.io](https://share.streamlit.io)
-2. Click **"New app"**
-3. Connect your **GitHub repository**
-4. Configure:
+### Step 2: Configure Build Settings
 
 | Setting | Value |
 |---------|-------|
-| **Repository** | Your repo |
-| **Branch** | `main` |
-| **Main file path** | `dashboard/app.py` |
+| **Base directory** | `frontend` |
+| **Build command** | (leave empty) |
+| **Publish directory** | `frontend` |
 
-5. In **Advanced settings** → **Secrets**, paste:
+### Step 3: Add Environment Variables
 
-```toml
-[general]
-API_URL = "https://your-render-app.onrender.com/api/v1"
+Go to **Site settings** → **Environment Variables** and add:
 
-[supabase]
-url = "https://rlvblrpfsfbnetdgnaqh.supabase.co"
-key = "your-anon-key"
+```
+SUPABASE_URL=https://rlvblrpfsfbnetdgnaqh.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-6. Click **"Deploy!"**
+> ⚠️ **Note**: Netlify only hosts static sites. For the Python backend, you'll need to deploy separately on Vercel, Render, or Railway.
 
 ---
 
-## 🔄 Alternative: Vercel Deployment
+## 💻 Local Development
 
-> ⚠️ **Note**: Vercel is optimized for JavaScript/Next.js. For Python apps like this, Render is recommended. However, you CAN deploy the FastAPI backend using Vercel's serverless functions.
+### Prerequisites
 
-### Backend on Vercel (Advanced)
+- Python 3.11+
+- Node.js 18+ (optional, for dev tools)
 
-1. Create `backend/vercel.json`:
+### Step 1: Clone Repository
 
-```json
-{
-  "builds": [
-    {
-      "src": "app/main.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "app/main.py"
-    }
-  ]
-}
+```bash
+git clone https://github.com/Lakshyabh1509/edqmp-enterprise.git
+cd edqmp-enterprise
 ```
 
-2. Deploy via Vercel CLI:
+### Step 2: Create Environment File
+
+```bash
+# Copy example to .env
+copy .env.example .env
+
+# Edit with your Supabase credentials
+notepad .env
+```
+
+**.env contents:**
+```env
+SUPABASE_URL=https://rlvblrpfsfbnetdgnaqh.supabase.co
+SUPABASE_KEY=your-anon-key
+SECRET_KEY=your-secret-key
+ENVIRONMENT=development
+DEBUG=true
+```
+
+### Step 3: Install Backend Dependencies
+
 ```bash
 cd backend
-vercel --prod
+pip install -r requirements.txt
 ```
 
-3. Set environment variables in Vercel Dashboard → Settings → Environment Variables
+### Step 4: Run Backend
 
-### Dashboard Alternative: Railway
+```bash
+# From backend directory
+uvicorn app.main:app --reload --port 8000
+```
 
-Railway is another excellent option that supports Python natively:
+Backend will be at: http://localhost:8000
 
-1. Go to [railway.app](https://railway.app)
-2. Click **"New Project"** → **"Deploy from GitHub"**
-3. Select your repository
-4. Railway auto-detects Python and deploys
+### Step 5: Run Frontend
+
+```bash
+# From frontend directory
+cd ../frontend
+python -m http.server 3000
+```
+
+Frontend will be at: http://localhost:3000
+
+### Step 6: Test the App
+
+1. Open http://localhost:3000
+2. Click **"Try Demo Account"** or sign up
+3. Explore the dashboard!
 
 ---
 
-## 📝 Environment Variables Reference
+## 🔧 Environment Variables
 
-### Backend (Production)
+### Required Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `SUPABASE_URL` | Supabase project URL | ✅ |
-| `SUPABASE_KEY` | Supabase anon/public key | ✅ |
-| `SUPABASE_SERVICE_KEY` | Supabase service role key | ✅ |
-| `SECRET_KEY` | JWT signing key (32+ chars) | ✅ |
-| `ENVIRONMENT` | `production` | ✅ |
-| `DEBUG` | `false` | ✅ |
-| `CORS_ORIGINS` | Allowed origins (comma-separated) | ⚪ |
-| `LOG_LEVEL` | `INFO` or `WARNING` | ⚪ |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SUPABASE_URL` | Your Supabase project URL | `https://xyz.supabase.co` |
+| `SUPABASE_KEY` | Supabase anon/public key | `eyJhbGciOiJI...` |
+| `SECRET_KEY` | JWT signing key (32+ chars) | `Qx44eUKHB5rN...` |
+| `ENVIRONMENT` | `development` or `production` | `production` |
+| `DEBUG` | Enable debug mode | `false` |
 
-### Dashboard (Streamlit Secrets)
+### Generate SECRET_KEY
 
-```toml
-[general]
-API_URL = "https://your-api.onrender.com/api/v1"
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
-[supabase]
-url = "https://your-project.supabase.co"
-key = "your-anon-key"
+### Current Configuration (Your Project)
+
+```env
+SUPABASE_URL=https://rlvblrpfsfbnetdgnaqh.supabase.co
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsdmJscnBmc2ZibmV0ZGduYXFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5Njc5MjYsImV4cCI6MjA4MDU0MzkyNn0.d4D5pTVgu9Jg36T2kXb3ZnC8OgcoPtzR_uqhme3qDHo
+SECRET_KEY=Qx44eUKHB5rNhPzsexFNeQl1tR12c7yH5Y5v4EmvoaI
+ENVIRONMENT=production
+DEBUG=false
 ```
 
 ---
 
 ## 🔐 Security Best Practices
 
-### Generate Secure SECRET_KEY
+### Never Commit Secrets
 
-```python
-# Run this locally to generate a secure key
-import secrets
-print(secrets.token_urlsafe(32))
-```
+The `.gitignore` is configured to exclude:
+- `.env` files
+- `secrets/` directories
+- `*.pem` and `*.key` files
 
-Example output: `kJ8xNw3RbVfY2LmPqS4TuZ9AcE1DgH5IoK6MnQrW`
+### Rotate SECRET_KEY Periodically
 
-### What SECRET_KEY Does
-
-| Purpose | Description |
-|---------|-------------|
-| **JWT Signing** | Signs authentication tokens so they can't be forged |
-| **Session Security** | Encrypts session data |
-| **Token Validation** | Verifies tokens haven't been tampered with |
-
-> ⚠️ **Never share your SECRET_KEY!** If compromised, regenerate immediately.
-
-### Rotating SECRET_KEY
-
-When you change the SECRET_KEY:
+When you change SECRET_KEY:
 - All existing JWT tokens become invalid
 - Users will need to log in again
-- This is a security feature, not a bug
 
----
+### Use HTTPS Only
 
-## ✅ Post-Deployment Verification
-
-### Backend Checks
-
-```bash
-# Health check
-curl https://your-app.onrender.com/health
-
-# Expected response:
-# {"status": "healthy", "version": "1.0.0"}
-```
-
-### Dashboard Checks
-
-1. Open your Streamlit URL
-2. Verify sidebar shows "API Connected" status
-3. Test login/signup flow
-4. Verify data loads correctly
-
-### Full Integration Test
-
-1. Create a quality rule in the dashboard
-2. Run a validation
-3. Check results appear
-4. Verify alerts are triggered (if configured)
+Vercel and Netlify provide free SSL certificates automatically.
 
 ---
 
 ## 🆘 Troubleshooting
 
-### "Application Error" on Render
+### "ModuleNotFoundError: No module named 'scipy'"
 
-- Check **Logs** in Render dashboard
-- Verify all environment variables are set
-- Ensure `requirements.txt` has all dependencies
+**Solution**: The code has been updated to make scipy optional. Redeploy.
 
 ### "Supabase connection failed"
 
-- Verify URL doesn't have trailing slash
-- Check API key wasn't truncated when copying
-- Ensure RLS policies are correctly set up
+**Check**:
+- URL doesn't have trailing slash
+- API key wasn't truncated when copying
+- Project is not paused (free tier pauses after inactivity)
 
-### Dashboard can't reach API
+### "Application Error" on Vercel
 
-- Verify `API_URL` in secrets is correct
-- Check CORS_ORIGINS includes Streamlit domain
-- Test API endpoint directly in browser
+**Check**:
+1. View deployment logs in Vercel dashboard
+2. Verify all environment variables are set
+3. Try clearing build cache: **Settings** → **General** → **Clear Build Cache**
+
+### Frontend shows blank page
+
+**Check**:
+- Browser console for JavaScript errors
+- Network tab for failed API requests
+- API endpoint is accessible
+
+### Login not working
+
+**Check**:
+1. Supabase Email provider is enabled
+2. Supabase project is not paused
+3. API is returning proper responses
 
 ---
 
-## 📚 Quick Reference
+## 📚 Project Structure
 
-### Deployment URLs (After Setup)
-
-| Service | URL |
-|---------|-----|
-| Backend API | `https://edqmp-api.onrender.com` |
-| API Docs | `https://edqmp-api.onrender.com/docs` |
-| Dashboard | `https://your-app.streamlit.app` |
-| Supabase | `https://rlvblrpfsfbnetdgnaqh.supabase.co` |
-
-### Useful Commands
-
-```bash
-# Generate SECRET_KEY
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-
-# Test API locally
-curl http://localhost:8000/health
-
-# Run backend locally
-cd backend && uvicorn app.main:app --reload
-
-# Run dashboard locally
-cd dashboard && streamlit run app.py
+```
+edqmp-enterprise/
+├── frontend/               # Static web frontend
+│   ├── index.html         # Main HTML page
+│   ├── styles.css         # Premium dark theme
+│   └── app.js             # Application logic
+├── backend/               # FastAPI backend
+│   ├── app/
+│   │   ├── main.py       # Entry point
+│   │   ├── api/          # API routes
+│   │   ├── core/         # Database, auth
+│   │   ├── engines/      # Validation engines
+│   │   └── schemas/      # Pydantic models
+│   └── requirements.txt
+├── dashboard/             # Streamlit dashboard (legacy)
+├── docs/                  # Documentation
+├── scripts/               # Database setup scripts
+├── vercel.json           # Vercel configuration
+└── .env.example          # Environment template
 ```
 
 ---
 
-## 🎯 Recommended Hosting Stack
+## 🔗 Useful Links
 
-| Component | Free Tier | Recommendation |
-|-----------|-----------|----------------|
-| **Backend** | Render (750 hrs/month) | ⭐ Best for Python |
-| **Dashboard** | Streamlit Cloud (unlimited) | ⭐ Best for Streamlit |
-| **Database** | Supabase (500MB, 50K requests) | ⭐ Best for PostgreSQL |
-| **Alternative** | Railway ($5 credit/month) | Good all-in-one |
+| Resource | URL |
+|----------|-----|
+| **Live App** | https://edqmp-enterprise.vercel.app |
+| **GitHub Repo** | https://github.com/Lakshyabh1509/edqmp-enterprise |
+| **Supabase Dashboard** | https://app.supabase.com |
+| **Vercel Dashboard** | https://vercel.com/dashboard |
+
+---
+
+## ✅ Deployment Checklist
+
+- [ ] Supabase project created
+- [ ] Database schema executed
+- [ ] Email auth enabled in Supabase
+- [ ] Repository pushed to GitHub
+- [ ] Vercel project created
+- [ ] Environment variables configured
+- [ ] Deployment successful
+- [ ] Health endpoint returns OK
+- [ ] Frontend loads correctly
+- [ ] Login/Demo mode works
+- [ ] API documentation accessible
 
 ---
 
