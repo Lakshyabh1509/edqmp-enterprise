@@ -2,39 +2,49 @@
     "version": 2,
     "builds": [
         {
-            "src": "frontend/**",
+            "src": "backend/app/main.py",
+            "use": "@vercel/python"
+        },
+        {
+            "src": "frontend/index.html",
             "use": "@vercel/static"
         },
         {
-            "src": "backend/app/main.py",
-            "use": "@vercel/python"
-        }
-    ],
-    "routes": [
-        {
-            "src": "/api/(.*)",
-            "dest": "backend/app/main.py"
+            "src": "frontend/styles.css",
+            "use": "@vercel/static"
         },
         {
-            "src": "/health",
-            "dest": "backend/app/main.py"
-        },
-        {
-            "src": "/docs",
-            "dest": "backend/app/main.py"
-        },
-        {
-            "src": "/openapi.json",
-            "dest": "backend/app/main.py"
-        },
-        {
-            "src": "/(.*)",
-            "dest": "frontend/$1"
+            "src": "frontend/app.js",
+            "use": "@vercel/static"
         }
     ],
     "rewrites": [
         {
-            "source": "/",
+            "source": "/api/(.*)",
+            "destination": "/backend/app/main.py"
+        },
+        {
+            "source": "/docs",
+            "destination": "/backend/app/main.py"
+        },
+        {
+            "source": "/openapi.json",
+            "destination": "/backend/app/main.py"
+        },
+        {
+            "source": "/health",
+            "destination": "/backend/app/main.py"
+        },
+        {
+            "source": "/styles.css",
+            "destination": "/frontend/styles.css"
+        },
+        {
+            "source": "/app.js",
+            "destination": "/frontend/app.js"
+        },
+        {
+            "source": "/(.*)",
             "destination": "/frontend/index.html"
         }
     ]
